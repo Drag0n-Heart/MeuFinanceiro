@@ -1,0 +1,19 @@
+MEU FINANCEIRO — versão inicial
+
+Arquivos:
+- index.html: aplicativo
+- manifest.json: configuração para instalação como PWA
+- sw.js: cache para funcionamento offline após primeira abertura
+- icon-192.png e icon-512.png: ícones
+
+Como testar:
+1. Extraia o ZIP.
+2. Abra index.html no navegador para testar as funções básicas. Em alguns navegadores, instalação/offline não funciona ao abrir diretamente como arquivo.
+3. Para instalar como aplicativo Android, publique os arquivos em um endereço HTTPS (por exemplo, GitHub Pages).
+4. Abra esse endereço no Chrome do Android, toque no menu ⋮ e escolha "Instalar app" ou "Adicionar à tela inicial".
+
+Privacidade:
+Os lançamentos são armazenados no localStorage do navegador neste aparelho. Não há cadastro nem envio dos lançamentos a um servidor. Exporte o backup pela aba Relatórios regularmente. Limpar os dados do navegador pode apagar os lançamentos.
+
+Observação:
+Esta é uma primeira versão pessoal, não um aplicativo publicado na Play Store.
