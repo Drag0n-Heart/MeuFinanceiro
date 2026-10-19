@@ -35,6 +35,7 @@ label{display:block;font-size:13px;font-weight:700;color:var(--muted);margin:14p
 .footer{font-size:12px;color:var(--muted);text-align:center;padding:22px 8px 80px}
 dialog{border:0;border-radius:24px;padding:0;width:min(94vw,470px);max-height:90dvh;overflow:auto;box-shadow:0 20px 70px #0003}dialog::backdrop{background:#0c1711a6}.modal{padding:20px}.modal-head{display:flex;align-items:center;justify-content:space-between}.modal-head h2{margin:0;font-size:20px}.close{border:0;background:var(--bg);border-radius:50%;width:38px;height:38px;font-size:22px}
 .notice{background:#fff7df;border:1px solid #f0dfa7;border-radius:13px;padding:12px;color:#6b5313;font-size:13px;margin-top:12px}
+.category-tools{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}.category-tools button{border:1px solid var(--line);background:#fff;border-radius:11px;padding:10px;font-weight:700}.category-tools button.active{border-color:#a7d7bf;background:var(--green-soft);color:var(--green)}.manage-category{display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--line)}.manage-category:last-child{border-bottom:0}.manage-category .name{flex:1;overflow-wrap:anywhere}.delete-cat{border:1px solid #f0b7b2;background:var(--red-soft);color:var(--red);border-radius:9px;padding:7px 10px;font-weight:700;font-size:13px}
 @media(min-width:560px){.app{padding-left:22px;padding-right:22px}}
 </style>
 </head>
@@ -63,6 +64,16 @@ dialog{border:0;border-radius:24px;padding:0;width:min(94vw,470px);max-height:90
       </div>
       <div class="section-head"><h2>Gastos por categoria</h2></div>
       <div class="card" id="categoryReport"></div>
+      <div class="section-head"><h2>Minhas categorias</h2></div>
+      <div class="card">
+        <div class="subtle">Adicione as categorias que fazem sentido para você. As categorias removidas não apagam lançamentos antigos.</div>
+        <div class="category-tools"><button type="button" id="manageIncome" class="active">Entradas</button><button type="button" id="manageExpense">Saídas</button></div>
+        <form id="categoryForm" style="display:flex;gap:8px;align-items:end">
+          <div style="flex:1;min-width:0"><label for="newCategory" style="margin-top:0">Nova categoria</label><input id="newCategory" maxlength="32" placeholder="Ex.: Pet, academia..." required></div>
+          <button class="secondary" type="submit" style="min-height:46px">Adicionar</button>
+        </form>
+        <div id="manageCategoryList" style="margin-top:10px"></div>
+      </div>
       <div class="section-head"><h2>Dados e segurança</h2></div>
       <div class="card">
         <div class="subtle">Os registros ficam neste navegador, no seu aparelho. Exporte um backup de vez em quando para não perder seus dados.</div>
@@ -94,15 +105,19 @@ const currency = n => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'
 const today = new Date();
 const localDate = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 const monthNow = localDate(today).slice(0,7);
-const categories = {
+const defaultCategories = {
  income:['Salário','Serviços extras','Vendas','Outras entradas'],
  expense:['Moradia','Alimentação','Transporte','Contas','Saúde','Lazer','Compras','Dívidas','Outras saídas']
 };
+let categories;
+try { const stored=JSON.parse(localStorage.getItem('meuFinanceiro_categories_v1')||'null'); categories=stored && Array.isArray(stored.income) && Array.isArray(stored.expense) ? stored : structuredClone(defaultCategories); } catch { categories=structuredClone(defaultCategories); }
+let manageType='income';
 let data = [];
 try { data = JSON.parse(localStorage.getItem('meuFinanceiro_v1') || '[]'); if(!Array.isArray(data)) data=[]; } catch { data=[]; }
 let selectedMonth = monthNow, entryType = 'expense', editingId = null;
 $('monthPicker').value = selectedMonth;
 function save(){localStorage.setItem('meuFinanceiro_v1',JSON.stringify(data));}
+function saveCategories(){localStorage.setItem('meuFinanceiro_categories_v1',JSON.stringify(categories));}
 function monthData(){return data.filter(t=>t.date && t.date.slice(0,7)===selectedMonth).sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt-a.createdAt);}
 function sums(items){return items.reduce((s,t)=>{s[t.type]+=Number(t.amount)||0;return s;},{income:0,expense:0});}
 function safe(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -120,15 +135,15 @@ function render(){
  const cats=Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
  $('categoryReport').innerHTML=cats.length?cats.map(([name,val])=>`<div class="report-line"><div class="report-line-head"><span>${safe(name)}</span><strong>${currency(val)}</strong></div><div class="bar"><span style="width:${val/Math.max(...cats.map(c=>c[1]),1)*100}%"></span></div></div>`).join(''):'<div class="empty">Ainda não há gastos para mostrar neste mês.</div>';
 }
-function updateCategories(){
- const list=categories[entryType]; $('category').innerHTML=list.map(c=>`<option>${safe(c)}</option>`).join('');
+function updateCategories(selectedCategory=null){
+ const list=[...categories[entryType]]; if(selectedCategory && !list.includes(selectedCategory)) list.push(selectedCategory); $('category').innerHTML=list.map(c=>`<option>${safe(c)}</option>`).join('');
  $('incomeType').classList.toggle('selected',entryType==='income'); $('expenseType').classList.toggle('selected',entryType==='expense');
  $('incomeType').classList.toggle('income',true); $('expenseType').classList.toggle('expense',true);
 }
 function openEntry(type='expense',item=null){
  editingId=item?.id||null; entryType=item?.type||type; $('formTitle').textContent=item?'Editar lançamento':'Novo lançamento';
  $('amount').value=item?item.amount:''; $('description').value=item?.description||''; $('date').value=item?.date||localDate(new Date(selectedMonth+'-15'));
- updateCategories(); if(item) $('category').value=item.category;
+ updateCategories(item?.category||null); if(item) $('category').value=item.category;
  $('deleteEntry').style.display=item?'block':'none'; $('entryDialog').showModal(); setTimeout(()=>$('amount').focus(),80);
 }
 function closeEntry(){$('entryDialog').close();}
@@ -141,9 +156,19 @@ $('transactionList').addEventListener('click',e=>{const el=e.target.closest('.tr
 $('transactionList').addEventListener('keydown',e=>{if(e.key==='Enter'){const el=e.target.closest('.transaction');if(el){const t=data.find(t=>t.id===el.dataset.id);if(t)openEntry(t.type,t);}}});
 $('entryForm').onsubmit=e=>{e.preventDefault();const amount=Number($('amount').value);if(!Number.isFinite(amount)||amount<=0)return alert('Informe um valor maior que zero.');const item={id:editingId||String(Date.now())+Math.random().toString(16).slice(2),type:entryType,amount,description:$('description').value.trim(),category:$('category').value,date:$('date').value,createdAt:Date.now()};if(!item.description||!item.date)return alert('Preencha a descrição e a data.');if(editingId)data=data.map(t=>t.id===editingId?item:t);else data.push(item);save();selectedMonth=item.date.slice(0,7);$('monthPicker').value=selectedMonth;closeEntry();render();};
 $('deleteEntry').onclick=()=>{if(editingId&&confirm('Excluir este lançamento?')){data=data.filter(t=>t.id!==editingId);save();closeEntry();render();}};
-$('exportBtn').onclick=()=>{const blob=new Blob([JSON.stringify({app:'Meu Financeiro',version:1,exportedAt:new Date().toISOString(),transactions:data},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='backup-meu-financeiro.json';a.click();URL.revokeObjectURL(url);};
+$('exportBtn').onclick=()=>{const blob=new Blob([JSON.stringify({app:'Meu Financeiro',version:2,exportedAt:new Date().toISOString(),transactions:data,categories},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='backup-meu-financeiro.json';a.click();URL.revokeObjectURL(url);};
 $('importBtn').onclick=()=>$('importFile').click();
-$('importFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const obj=JSON.parse(await f.text());const incoming=Array.isArray(obj)?obj:obj.transactions;if(!Array.isArray(incoming)||!incoming.every(t=>t&&['income','expense'].includes(t.type)&&Number(t.amount)>0&&t.date&&t.description))throw new Error('Arquivo inválido');if(confirm(`Importar ${incoming.length} lançamentos? Os registros atuais serão substituídos.`)){data=incoming;save();render();alert('Backup importado.');}}catch(err){alert('Não foi possível importar. Verifique se é um backup válido do Meu Financeiro.');}e.target.value='';};
+$('importFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const obj=JSON.parse(await f.text());const incoming=Array.isArray(obj)?obj:obj.transactions;if(!Array.isArray(incoming)||!incoming.every(t=>t&&['income','expense'].includes(t.type)&&Number(t.amount)>0&&t.date&&t.description))throw new Error('Arquivo inválido');if(confirm(`Importar ${incoming.length} lançamentos? Os registros atuais serão substituídos.`)){data=incoming;save();if(obj.categories&&Array.isArray(obj.categories.income)&&Array.isArray(obj.categories.expense)){categories=obj.categories;saveCategories();renderManageCategories();}render();alert('Backup importado.');}}catch(err){alert('Não foi possível importar. Verifique se é um backup válido do Meu Financeiro.');}e.target.value='';};
+function renderManageCategories(){
+ $('manageIncome').classList.toggle('active',manageType==='income'); $('manageExpense').classList.toggle('active',manageType==='expense');
+ const list=categories[manageType];
+ $('manageCategoryList').innerHTML=list.length?list.map((name,index)=>`<div class="manage-category"><div class="name">${safe(name)}</div><button class="delete-cat" type="button" data-cat-index="${index}" aria-label="Excluir categoria ${safe(name)}">Excluir</button></div>`).join(''):'<div class="empty">Nenhuma categoria cadastrada.</div>';
+}
+$('manageIncome').onclick=()=>{manageType='income';renderManageCategories();};
+$('manageExpense').onclick=()=>{manageType='expense';renderManageCategories();};
+$('categoryForm').onsubmit=e=>{e.preventDefault();const name=$('newCategory').value.trim();if(!name)return;if(categories[manageType].some(c=>c.toLocaleLowerCase('pt-BR')===name.toLocaleLowerCase('pt-BR'))){alert('Essa categoria já existe.');return;}categories[manageType].push(name);saveCategories();$('newCategory').value='';renderManageCategories();updateCategories();};
+$('manageCategoryList').onclick=e=>{const btn=e.target.closest('[data-cat-index]');if(!btn)return;const index=Number(btn.dataset.catIndex);const name=categories[manageType][index];if(!name)return;if(!confirm(`Excluir a categoria "${name}"? Lançamentos antigos continuarão com essa categoria no histórico.`))return;categories[manageType].splice(index,1);saveCategories();renderManageCategories();updateCategories();};
+renderManageCategories();
 if('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('./sw.js').catch(()=>{});
 render();
 </script>
